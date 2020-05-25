@@ -1,0 +1,176 @@
+---
+title: AS5-1：RiTW資料探索
+author: 中山大學管理學院 卓雍然
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: ../etc/style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+if(!require(plotly)) install.packages("plotly")
+if(!require(tidyr)) install.packages("tidyr")
+```
+<hr>
+  
+```{r results='hide', message=FALSE, warning=FALSE}
+pacman::p_load(dplyr,ggplot2,tidyr,plotly,stringr)
+```
+
+```{r}
+load("RiTW/ritw01.rdata")
+ls()
+```
+
+
+### `DemoY108` - 村里季度資料
+
+```{r}
+table(DemoY108$year)
+```
+
+```{r}
+BIG6 = c("桃園市","臺北市","臺中市","臺南市","高雄市","新北市")
+
+Y = DemoY108 %>% select(
+  year, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, house=`戶數`, pop=`人口數`, fm.ratio=`性比例`, 
+  sp.ratio=`扶養比`, elderly=`老化指數`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+
+Y %>% is.na %>% colSums
+```
+
+```{r}
+Y %>% group_by(year, city) %>% 
+  summarise(Pop = sum(pop)) %>%
+  ggplot(aes(x=year, y=Pop, col=factor(city)) ) + 
+  geom_line(size=1) -> g; ggplotly(g)
+```
+
+```{r}
+df = Y %>% group_by(city, year) %>% summarise(
+  `性比例` = sum(fm.ratio*pop)/sum(pop),
+  `扶養比` = sum(sp.ratio*pop)/sum(pop),
+  `老化指數` = sum(elderly*pop)/sum(pop),
+  `人口` = sum(pop)
+  ) %>% filter(year %in% seq(99,108,3)) 
+```
+
+```{r fig.width=8, fig.height=8}
+scale1 = function(mp=0) scale_color_gradient2(
+  midpoint=mp, low="seagreen4", mid="wheat2", high="firebrick2")
+
+df %>% #filter(city %in% BIG6) %>% 
+  ggplot(aes(x=`扶養比`, y=`老化指數`, col=`性比例`, size=`人口`, label=year)) +
+  geom_point(alpha=1) + scale1(100) + theme_bw() +
+  facet_wrap(~city, ncol=4) -> g; ggplotly(g)
+```
+
+```{r fig.width=8, fig.height=6}
+df %>% #filter(city %in% BIG6) %>% 
+  ggplot(aes(x=`扶養比`, y=`老化指數`, col=`性比例`, size=`人口`, label=city)) +
+  geom_point(alpha=1) + scale1(100) + theme_bw() +
+  facet_wrap(~year) -> g; ggplotly(g)
+```
+
+
+### `DemoQ` - 村里季度資料
+
+```{r}
+table(DemoQ$`資料時間`)
+```
+
+```{r}
+Q = DemoQ %>% transmute(
+  year = str_remove(`資料時間`,"Y.*$") %>% as.integer,
+  qtr = str_remove(`資料時間`,"^\\d+Y"),
+  vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, vname=`村里名稱`,
+  born=`出生數`, death=`死亡數`, marriage=`結婚對數`, devorce=`離婚對數`, 
+  time=`資料時間`
+  ) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city )) %>% 
+  mutate_at(vars(born:devorce), ~replace_na(as.integer(.), 0))
+```
+
+```{r}
+group_by(Q, qtr) %>% 
+  summarise_at(vars(born:devorce), sum) %>% 
+  gather("event", "n", -1) %>% 
+  ggplot(aes(x=qtr, y=n)) + geom_bar(stat="identity") +
+  facet_wrap(~event, nrow=1)
+```
+
+```{r}
+group_by(Q, time) %>% 
+  summarise_at(vars(born:devorce), sum) %>% 
+  gather("event", "n", -1) %>% 
+  ggplot(aes(x=time, y=n, group=event, col=event)) + 
+  geom_line() -> g ; ggplotly(g) 
+```
+
+```{r}
+group_by(Q, year) %>% 
+  summarise_at(vars(born:devorce), sum) %>% 
+  gather("event", "n", -1) %>% 
+  ggplot(aes(x=year, y=n, col=event)) + 
+  geom_line() -> g ; ggplotly(g) 
+```
+
+```{r}
+group_by(Q, city) %>% 
+  summarise_at(vars(born:devorce), sum) %>% 
+  ggplot(aes(x=death, y=born, col=marriage, size=devorce, label=city)) + 
+  geom_point(alpha=0.7) + 
+  geom_smooth(method="lm",se=F,color="gold") -> g ; ggplotly(g) 
+```
+
+#凱婷的題目
+```{r}
+A = Income %>% select(
+  year="資料時間", inc="各類所得金額合計", city="縣市名稱") %>%
+  filter(inc !=is.na(inc)) %>%
+  mutate(city = case_when(
+    city == "臺北縣"~"新北市",
+    city == "桃園縣"~"桃園市",
+    city == "高雄縣"~"高雄市",
+    city == "臺南縣"~"臺南市",
+    city == "臺中縣"~"臺中市",TRUE ~ city)) %>%
+  group_by(city, year) %>% 
+  summarise(Inc = sum(inc))
+
+A$year <- substr(A$year ,1, 3) 
+A$year <- as.integer(A$year)
+
+A %>% filter(city %in% BIG6) %>%
+  ggplot(aes(x=year, y=Inc, col=city)) + #pop是人口數
+  geom_line() +
+  geom_vline(xintercept=103 , col='red')
+
+#依年份比較各縣市的各類所得金額合計(100Y~106Y)
+#所得為前五高的縣市排名：台北市>新北市>台中市>=高雄市>桃園市
+#其中在100年時高雄市原本略高於台中市，但在103年之後台中的所得開始超越高雄，且差距有越來越多的趨勢，可見近年來台中的經濟發展比高雄更好。
+
+```

@@ -1,0 +1,113 @@
+---
+title: AS5-1：RiTW資料探索
+author: 中山大學管理學院 卓雍然
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: ../etc/style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+if(!require(plotly)) install.packages("plotly")
+if(!require(tidyr)) install.packages("tidyr") 
+BDDM <- c ("born","death","devorce","marriage")
+```
+<hr>
+  
+```{r results='hide', message=FALSE, warning=FALSE}
+pacman::p_load(dplyr,ggplot2,tidyr,plotly,stringr)
+```
+
+```{r}
+load("RiTW/ritw01.rdata")
+ls() #看裡面有多少個物件及結構
+```
+
+
+### `DemoY108` - 村里季度資料
+
+```{r}
+table(DemoY108$year)
+```
+
+```{r}
+BIG6 = c("桃園市","臺北市","臺中市","臺南市","高雄市","新北市")
+
+Y = DemoY108 %>% select(
+  year, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, house=`戶數`, pop=`人口數`, fm.ratio=`性比例`, 
+  sp.ratio=`扶養比`, elderly=`老化指數`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+
+Y %>% is.na %>% colSums
+```
+
+
+
+```{r}
+Q = DemoQ %>% transmute(
+  year = str_remove(`資料時間`,"Y.*$") %>% as.integer,
+  qtr = str_remove(`資料時間`,"^\\d+Y"),
+  vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, vname=`村里名稱`,
+  born=`出生數`, death=`死亡數`, marriage=`結婚對數`, devorce=`離婚對數`, 
+  time=`資料時間`
+  ) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city )) %>% 
+  mutate_at(vars(born:devorce), ~replace_na(as.integer(.), 0))
+```
+
+
+
+
+
+```{r}
+Q %>%
+group_by (city) %>%
+  filter(city == c("新北市","高雄市","臺北市","臺中市","臺南市","桃園市")) %>%
+  summarise(birth=sum(born,na.rm = T),
+            death = sum(death,na.rm = T),
+            devorce = sum(death,na.rm = T),
+            marriage = sum(death,na.rm = T)) %>% ungroup %>%
+  mutate(city = case_when(
+    city == "臺北縣"~"新北市",
+    city == "桃園縣"~"桃園市",
+    city == "高雄縣"~"高雄市",
+    city == "臺南縣"~"臺南市",
+    city == "臺中縣"~"臺中市",
+TRUE ~ city)) %>%
+  gather(key="BDDM",value="Pop",2:5) %>% #(2:5是什麼意思？？？？？)
+  ggplot(aes(x=city, y=Pop, fill=BDDM)) +
+  geom_col(position="fill") + theme(text = element_text(family = 'STHeitiTC-Light'))
+#geom_col() 數字  
+# geom_col(position="fill") 比率
+
+#六都中出生、死亡、結婚、離婚的比例
+#六都中出生率最高的是臺北市，而最低的是高雄市與臺南市。
+#六都中死亡率最高的是臺南市，反觀桃園市死亡率最低。
+#六都中離婚率最高的是臺南市，相較至下桃園市最低。
+#六都中結婚率最高的是高雄市與臺南市，其他四個城市不相上下。
+
+```
+

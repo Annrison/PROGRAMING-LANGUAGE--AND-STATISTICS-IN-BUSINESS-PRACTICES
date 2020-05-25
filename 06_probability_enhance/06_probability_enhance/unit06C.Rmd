@@ -1,0 +1,188 @@
+---
+title: UNIT06C：機率的策略應用案例
+author: 中山大學管理學院教材 劉岱宜 
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: etc/style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+par(cex=0.8)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+```
+<hr>
+
+```{r}
+pacman::p_load(dplyr, vcd)
+```
+
+### 【A】實務案例一：擲筊的成功機率
+
+<p class="qiz">
+<span style="font-size:24px">`r "\U1F9D9"` 問題討論：</span><br>
+在`cup.csv`檔案裡面是一千個信徒的擲筊次數，假定每一個人都是擲到3次成功才停止，請問：<br>
+&emsp; ■ 這些擲筊次數是甚麼分佈？ 它的參數是？<br>
+&emsp; ■ 這個筊的成功機率大約是？<br>
+&emsp; ■ 請畫出用這個筊擲10次成功之前，失敗次數的機率分布？<br>
+&emsp; ■ 用這個筊擲15次還不能有5次成功的機率是？<br>
+</p class="qiz">
+
+失敗次數是Poisson嗎？ (因為擲到3次成功才停止，所以失敗次數等於擲筊次數減三)
+```{r}
+# X是每個人成功三次才停的次數，分布像是nbinom+3
+X = read.csv("cup.csv")$x
+fit =  goodfit(table(X - 3), "poisson")
+summary(fit)
+#5.0416e-317顯著，應該不是Poisson
+```
+
+已知成功次數為3，用Negative Binomial試試看(n=3)
+&emsp; ■ `NBinomial[n, p]`: 重複發生機率為`p`的實驗，第`n`次成功前失敗次數的分佈<br>
+
+```{r}
+#因為我們知道是成功三次之前，所以n要等於3
+fit =  goodfit(table(X - 3), "nbinom", par=list(size=3))
+summary(fit)
+#p = 0.26795，
+```
+
+```{r}
+#size：3
+#prob：0.248，擲筊成功的機率
+fit$par
+```
+
+<span style="font-size:24px">`r "\U1F5FF"`</span> :
+這個筊的成功機率大約是？<br>
+```{r}
+#prob：0.248，擲筊成功的機率
+```
+
+<span style="font-size:24px">`r "\U1F5FF"`</span> :
+NBinomial[n=3,p=0.248]是 ... 的分佈？<br>
+```{r}
+#重複發生機率為`0.248`的實驗，第`3`次成功前失敗次數的分佈
+```
+
+<span style="font-size:24px">`r "\U1F5FF"`</span> :
+畫出用這個筊擲10次成功之前，失敗次數的機率分布
+(擲10次成功之前，意思是不管前面失敗幾次，集滿10個成功的次數)
+```{r fig.height=2.5, fig.width=8}
+#畫出信徒丟0到70次的機率分布
+#par=c(margin=c(3,3,3,1),cex=0.7) #設定圖表
+dnbinom(0:70, 10, fit$par$prob) %>% barplot(names=0:70,main = "筊擲10次成功之前，失敗幾次機率分布")
+```
+
+<span style="font-size:24px">`r "\U1F5FF"`</span> :
+用這個筊擲15次還不能有5次成功的機率是？ 0.69309
+```{r}
+#丟15次，成功機率小於5
+#全部減掉丟十五次，十次失敗，五次成功
+1 - pnbinom(10, 5, fit$par$prob)
+```
+<br><hr>
+
+
+```{r}
+#補充到第十次失敗之前的機率
+par(cex=0.5)
+dnbinom(0:40, 5, fit$par$prob) %>% 
+  barplot(names=0:40, xlab="No. Failures before 10 Successes",
+          col=c(rep('green',11), rep('red', 30)))
+```
+
+
+### 【B】實務案例二：老忠實賭局
+
+<p class="qiz">
+<span style="font-size:24px">`r "\U1F5FF"` 問題討論：</span> <br>
+假如賭場老闆從零開始把每10秒鐘設為一個區間，每個區間的賭金是五塊錢 ...<br>
+&emsp;■ 你要怎麼押注，才能獲得最高的期望報酬呢？<br>
+&emsp;■ 你的賭金和期望報酬各是多少？<br>
+</p class="qiz">
+
+§ 使用R的內建的功能建立PDF(點機率)模型
+```{r fig.height=2.5, fig.width=7}
+D = faithful$eruptions        # 噴發時間資料放在D裡面
+Adjust = 0.5                       # 調整頻寬(bandwidth，越小越陡峭、複雜) adjustment
+DEN = density(D, adjust = Adjust)      # density function 機率密度函數
+PDF = approxfun(DEN$x, DEN$y, yleft=0, yright=0)    
+                                  # PDF 點機率，放進函數會告訴x等於某個數的時候y是多少
+
+par(mar=c(2,4,2,1), cex=0.7) #設定畫布
+curve(PDF(x), 1, 5.6, col='blue',lwd=2,main="Prob. Density Function") #x從1到5.6
+rug(D) #下面很密的那些黑色線線，單位是分鐘
+abline(h=seq(0,1,0.1),col='lightgrey',lty=3)
+```
+
+§ 利用模型策略規劃
+```{r}
+x1 = seq(1, 6, 1/6); x2 = x1 + (1/6)     # 臨界值(因為單位是分鐘，要除以6)
+px = sapply(1:length(x1), function(i) {  # 機率
+  integrate(PDF, x1[i], x2[i])$value     #       
+  })  
+net = 100 * px - 5                       # 淨期望報酬
+data.frame(x1, x2, px, net) %>% 
+  arrange(desc(net)) %>%
+  mutate(
+    payoff =  cumsum(net),               # 累計(淨)期望報酬
+    investment = row_number() * 5,       # 累計投資、資本需求
+    roi = payoff / investment            # 累計投報率
+    ) %>% filter(net > 0) %>% round(3)   # 如果net大於0就押下去，之後取餘數
+```
+  x1        x2      px        net     payoff    investment  roi
+4.333	    4.500	   0.096	   4.577	   4.577	     5	      0.915
+
+區間起點 區間起點  發生機率 期望報酬 累積報酬  押了幾塊   投資報酬
+
+(期望報酬大於0的時候都押)
+到最後除了押了的45塊，還會得到24.338塊。
+
+> 你要怎麼押注，才能獲得最高的期望報酬呢？
+> 每輪期望報酬大於0的時候都押下去
+> 你的賭金和期望報酬各是多少？
+> 賭金45塊，淨期望報酬24.338塊
+
+
+<p class="qiz">
+<span style="font-size:24px">`r "\U1F5FF"` 問題討論：</span> <br>
+將獲利的期望報酬和賭金的比值稱為「期望投資報酬率」 ...<br>
+&emsp;■ 「最大期望投資報酬率」的策略是？ <br>
+&emsp;■ 這個策略的期望報酬和報酬率各是多少？<br>
+&emsp;■ 它和最高期望報酬的策略是相同的嗎？<br>
+&emsp;■ 哪一個策略目標比較好呢？ <br>
+&emsp;■ 我們應該如何選擇(設定)策略目標呢？ <br>
+</p class="qiz">
+
+> ■ 「最大期望投資報酬率」的策略是？
+> 投資時追求最高的投資報酬率
+> ■ 這個策略的期望報酬和報酬率各是多少？
+> 只押投資報酬率最高的第一輪，期望報酬4.577、報酬率0.915
+> ■ 它和最高期望報酬的策略是相同的嗎？
+> 不一樣
+
+<br><hr>
+
+<p class="wwl">
+<span style="font-size:24px">`r "\U1F4A1"` 學習重點：</span><br>
+&emsp; ■ 如何求出機率分布函數？<br>
+&emsp; &emsp; A. 將實證資料`fit`進已知的理論分布、並求出參數<br>
+&emsp; &emsp; B. 直接就實證資料做成(平滑)機率密度函數<br>
+&emsp; ■ 即使是很簡單的一個案例，我們也需要綜合使用機率、程式和商業知識，才能做出合適的決策！<br>
+&emsp; ■ 機率分布的商業應用套路：<br>
+&emsp; &emsp; 1. 寫出各事件(變數的值或區間)的報償<br>
+&emsp; &emsp; 2. 求出變數的機率分布函數<br>
+&emsp; &emsp; 3. 求出各事件的機率<br>
+&emsp; &emsp; 4. 求出不同策略的期望報償<br>
+&emsp; &emsp; 5. 依公司的策略目標做選擇<br>
+</p class="wwl">
+
+<br><br>

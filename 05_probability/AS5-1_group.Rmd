@@ -1,0 +1,228 @@
+---
+title: AS5-1：RiTW資料探索
+author: 第一組
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: etc/style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+if(!require(plotly)) install.packages("plotly")
+if(!require(tidyr)) install.packages("tidyr") 
+BDDM <- c ("born","death","devorce","marriage")
+```
+<hr>
+  
+```{r results='hide', message=FALSE, warning=FALSE}
+pacman::p_load(dplyr,ggplot2,tidyr,plotly,stringr)
+```
+
+```{r}
+load("RiTW/ritw01.rdata")
+ls() #看裡面有多少個物件及結構
+```
+
+
+### `DemoY108` - 村里季度資料
+
+```{r}
+table(DemoY108$year)
+```
+
+```{r}
+BIG6 = c("桃園市","臺北市","臺中市","臺南市","高雄市","新北市")
+
+Y = DemoY108 %>% select(
+  year, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, house=`戶數`, pop=`人口數`, fm.ratio=`性比例`, 
+  sp.ratio=`扶養比`, elderly=`老化指數`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+
+Y %>% is.na %>% colSums
+```
+
+
+
+```{r}
+Q = DemoQ %>% transmute(
+  year = str_remove(`資料時間`,"Y.*$") %>% as.integer,
+  qtr = str_remove(`資料時間`,"^\\d+Y"),
+  vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, vname=`村里名稱`,
+  born=`出生數`, death=`死亡數`, marriage=`結婚對數`, devorce=`離婚對數`, 
+  time=`資料時間`
+  ) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city )) %>% 
+  mutate_at(vars(born:devorce), ~replace_na(as.integer(.), 0))
+```
+
+
+
+
+#六都中出生、死亡、結婚、離婚的比例
+
+```{r}
+Q %>%
+group_by (city) %>%
+  filter(city == c("新北市","高雄市","臺北市","臺中市","臺南市","桃園市")) %>%
+  summarise(birth=sum(born,na.rm = T),
+            death = sum(death,na.rm = T),
+            devorce = sum(death,na.rm = T),
+            marriage = sum(death,na.rm = T)) %>% ungroup %>%
+  mutate(city = case_when(
+    city == "臺北縣"~"新北市",
+    city == "桃園縣"~"桃園市",
+    city == "高雄縣"~"高雄市",
+    city == "臺南縣"~"臺南市",
+    city == "臺中縣"~"臺中市",
+TRUE ~ city)) %>%
+  gather(key="BDDM",value="Pop",2:5) %>% #(2:5是什麼意思？？？？？)
+  ggplot(aes(x=city, y=Pop, fill=BDDM)) +
+  geom_col(position="fill")
+#geom_col() 數字  
+# geom_col(position="fill") 比率
+```
+
+> 六都中出生率最高的是臺北市，而最低的是高雄市與臺南市。
+> 六都中死亡率最高的是臺南市，反觀桃園市死亡率最低。
+> 六都中離婚率最高的是臺南市，相較至下桃園市最低。
+> 六都中結婚率最高的是高雄市與臺南市，其他四個城市不相上下。
+
+#六都中扶老比及扶幼比所占的比率
+
+```{r}
+#從DemoY108中主要撈出扶養比、扶幼比、扶老筆的資料
+C = DemoY108 %>% select(
+  year, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, house=`戶數`, pop=`人口數`, rise_r=`扶養比`,
+  young_r=`扶幼比`, elder_r=`扶老比`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+
+C %>% is.na %>% colSums
+
+#畫出六都中扶老比及扶幼比所占的比率
+C %>% 
+  filter(city == c("新北市","高雄市","臺北市","臺中市","臺南市","桃園市")) %>%
+  group_by(year,city) %>% 
+  summarise(young_r = sum(young_r), elder_r = sum(elder_r)) %>% 
+  gather(key = "category", value = "rise_r", 3:4) %>% 
+  ggplot(aes(x = year, y = rise_r, col=category)) +
+  geom_point() + 
+  facet_wrap(~city)
+```
+
+> 可看出扶老比逐漸上升-->老年化社會
+> 扶幼比逐漸下降-->少子化社會
+
+# 扶養比和縣市收入的關係
+
+1. 整理各縣市所得資料框
+```{r}
+Income_data = Income %>% select(
+  year=`資料時間`, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, income=`各類所得金額合計`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+
+Income_data$year <- substr(Income_data$year ,1, 3) 
+Income_data$year <- as.integer(Income_data$year)
+
+df_income = Income_data %>% group_by(city, year) %>% summarise(
+  `平均所得` = sum(income)
+  ) %>% filter(year %in% seq(99,108,3)) 
+
+df_income$merge = paste(df_income$city , df_income$year) 
+```
+
+2. 整理各縣市老化資料框
+```{r}
+df = Y %>% group_by(city, year) %>% summarise(
+  `性比例` = sum(fm.ratio*pop)/sum(pop),
+  `人口` = sum(pop),
+  `扶養比` = sum(sp.ratio*pop)/sum(pop),
+  `老化指數` = sum(elderly*pop)/sum(pop)
+  ) %>% filter(year %in% seq(99,108,3)) 
+
+df$merge = paste(df$city , df$year) 
+df_new = merge(df, df_income, by = "merge")
+```
+
+
+# 各縣市各年度所的總和統計
+```{r}
+A = Income %>% select(
+  year="資料時間", inc="各類所得金額合計", city="縣市名稱") %>%
+  filter(inc !=is.na(inc)) %>%
+  mutate(city = case_when(
+    city == "臺北縣"~"新北市",
+    city == "桃園縣"~"桃園市",
+    city == "高雄縣"~"高雄市",
+    city == "臺南縣"~"臺南市",
+    city == "臺中縣"~"臺中市",TRUE ~ city)) %>%
+  group_by(city, year) %>% 
+  summarise(Inc = sum(inc))
+
+A$year <- substr(A$year ,1, 3) 
+A$year <- as.integer(A$year)
+
+A %>% filter(city %in% BIG6) %>%
+  ggplot(aes(x=year, y=Inc, col=city)) + #pop是人口數
+  geom_line() +
+  geom_vline(xintercept=103 , col='red')
+```
+
+> 依年份比較各縣市的各類所得金額合計(100Y~106Y)
+> 所得為前五高的縣市排名：台北市>新北市>台中市>=高雄市>桃園市
+> 其中在100年時高雄市原本略高於台中市，但在103年之後台中的所得開始超越高雄，且差距有越來越多的趨勢，可見近年來台中的經濟發展比高雄更好。
+
+
+
+4.畫出各縣市所得和老化指數的關係
+```{r}
+BIG6 = c("桃園市","臺北市","臺中市","臺南市","高雄市","新北市")
+scale1 = function(mp=0) scale_color_gradient2(
+  midpoint=mp, low="seagreen4", mid="wheat2", high="firebrick2")
+
+df_new %>% #filter(city.x %in% BIG6) %>% 
+  ggplot(aes(x=`老化指數`, y=`平均所得`, col=`性比例`, size=`人口`, label=year.x)) +
+  geom_point(alpha=1) + scale1(100) + theme_bw() +
+  facet_wrap(~city.x, ncol=4) -> g; ggplotly(g)
+```
+
+> 發現偏鄉所得普遍偏低，但人口老化程度嚴重
+> 而在六都之中，高雄和台南市較有「又老又窮」的現象

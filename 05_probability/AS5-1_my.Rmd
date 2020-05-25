@@ -1,0 +1,104 @@
+---
+title: AS5-1：RiTW資料探索
+author: 中山大學管理學院 卓雍然
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: ../etc/style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+if(!require(plotly)) install.packages("plotly")
+if(!require(tidyr)) install.packages("tidyr")
+```
+<hr>
+  
+```{r results='hide', message=FALSE, warning=FALSE}
+pacman::p_load(dplyr,ggplot2,tidyr,plotly,stringr)
+```
+
+```{r}
+load("RiTW/ritw01.rdata")
+ls()
+```
+
+
+### `DemoY108` - 村里季度資料
+
+```{r}
+table(DemoY108$year)
+```
+
+```{r}
+BIG6 = c("桃園市","臺北市","臺中市","臺南市","高雄市","新北市")
+
+Income_data = Income %>% select(
+  year=`資料時間`, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, income=`各類所得金額合計`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+```
+
+
+```{r}
+Income_data$year <- substr(Income_data$year ,1, 3) 
+Income_data$year <- as.integer(Income_data$year_new)
+
+df_income = Income_data %>% group_by(city, year) %>% summarise(
+  `平均所得` = sum(income)
+  ) %>% filter(year %in% seq(99,108,3)) 
+
+df_income$merge = paste(df_income$city , df_income$year) 
+```
+
+
+```{r}
+Y = DemoY108 %>% select(
+  year, vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, 
+  vname=`村里名稱`, house=`戶數`, pop=`人口數`, fm.ratio=`性比例`) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city ))
+```
+
+```{r}
+df = Y %>% group_by(city, year) %>% summarise(
+  `性比例` = sum(fm.ratio*pop)/sum(pop),
+  `人口` = sum(pop),
+  `扶養比` = sum(sp.ratio*pop)/sum(pop),
+  `老化指數` = sum(elderly*pop)/sum(pop)
+  ) %>% filter(year %in% seq(99,108,3)) 
+
+df$merge = paste(df$city , df$year) 
+df_new = merge(df, df_income, by = "merge")
+```
+
+```{r}
+scale1 = function(mp=0) scale_color_gradient2(
+  midpoint=mp, low="seagreen4", mid="wheat2", high="firebrick2")
+
+df_new %>% #filter(city %in% BIG6) %>% 
+  ggplot(aes(x=`老化指數`, y=`平均所得`, col=`性比例`, size=`人口`, label=year.x)) +
+  geom_point(alpha=1) + scale1(100) + theme_bw() +
+  facet_wrap(~city.x, ncol=4) -> g; ggplotly(g)
+```
+

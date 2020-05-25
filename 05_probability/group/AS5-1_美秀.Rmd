@@ -1,0 +1,75 @@
+---
+title: AS5-1：RiTW資料探索
+author: 中山大學管理學院 卓雍然
+date: "`r Sys.time()`"
+output: 
+  html_document:
+    highlight: pygments
+    theme: flatly
+    css: ../etc/style.css
+---
+
+```{r results='hide', message=FALSE, warning=FALSE, echo=F}
+# 這些程式碼設定網頁的格式，並安裝、載入一些基本的套件，請大家不要去改動<br>
+rm(list=ls(all=T))
+knitr::opts_chunk$set(comment = NA)
+knitr::opts_knit$set(global.par = TRUE)
+options(scipen=20, digits=5, width=80)
+if(!require(pacman)) install.packages("pacman")
+if(!require(plotly)) install.packages("plotly")
+if(!require(tidyr)) install.packages("tidyr")
+
+pacman::p_load(dplyr,ggplot2,tidyr,plotly,stringr)
+```
+<hr>
+  
+```{r}
+load("RiTW/ritw01.rdata")
+ls()
+```
+
+
+```{r}
+Q = DemoQ %>% transmute(
+  year = str_remove(`資料時間`,"Y.*$") %>% as.integer,
+  qtr = str_remove(`資料時間`,"^\\d+Y"),
+  vid=`村里代碼`, city=`縣市名稱`, county=`鄉鎮市區名稱`, vname=`村里名稱`,
+  born=`出生數`, death=`死亡數`, marriage=`結婚對數`, devorce=`離婚對數`, 
+  time=`資料時間`
+  ) %>% 
+  filter(! city %in% c("連江縣","金門縣","澎湖縣")) %>% 
+  mutate(city = case_when(
+    city == "臺北縣" ~ "新北市",
+    city == "桃園縣" ~ "桃園市",
+    city == "高雄縣" ~ "高雄市",
+    city == "臺南縣" ~ "臺南市",
+    city == "臺中縣" ~ "臺中市",
+    TRUE ~ city )) %>% 
+  mutate_at(vars(born:devorce), ~replace_na(as.integer(.), 0))
+```
+
+
+
+```{r}
+b <- group_by(Q, qtr) %>% 
+  summarise_at(vars(born:devorce), sum) %>% 
+  gather("event", "n", -1) %>% 
+  ggplot(aes(x=qtr, y=n)) + geom_bar(stat="identity") +
+ # facet_wrap(~event, nrow=1)
+  facet_grid(event~city)
+```
+
+
+
+```{r}
+Q %>% group_by(city, qtr) %>% 
+  filter(city == c("新北市", "臺北市", "桃園市", "臺中市", "臺南市", "高雄市")) %>% 
+  summarise_at(vars(born:devorce), sum) %>% 
+  gather("event", "n",3:6) %>% 
+  ggplot(aes(x=qtr, y=n, fill=city)) + geom_bar(stat="identity") +
+  facet_wrap(~event, nrow=1)-> h ;ggplotly(h) 
+#出生率在第四季最高，六都之中又以新北市為最高，臺南市最低
+#新北的為全台人口數最多的都市，因此死亡率、離婚率及結婚率的人數也皆為六都之中最高的城市
+```
+
+
